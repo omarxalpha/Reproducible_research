@@ -1,0 +1,187 @@
+---
+title: Brief analysis of the U.S. National Oceanic and Atmospheric Administration's
+  (NOAA) storm database
+author: "Omar Alfaro-Rivera"
+date: "21/6/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Introduction 
+
+This is a final assignment for the Reproducible Research course, as part of the John Hopkins University Data Science Specialization at Coursera. This time, based on information from the National Oceanic and Atmospheric Administration's (NOAA), the aim is to answer two questions:
+
+* 1. Across the United States, which types of events are most harmful with respect to population health?
+
+* 2. Across the United States, which types of events have the greatest economic consequences?
+
+For a more thorough review of the code that this report generates, visit the following site.
+
+
+# Data Overview
+
+As already mentioned, the data from which this analysis unfolds is provided by the U.S. National Oceanic and Atmospheric Administration's (NOAA). In this small analysis we will limit ourselves to describing the variables used, but if the reader needs more information on the basis as a whole, it is recommended to visit [this site](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf).
+
+The next part of the code calls the libraries that will be used throughout the document, calls the database (and downloads if necessary). At the same time, it performs the necessary transformations to use the date type data.
+
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(kableExtra)
+
+if (!("FStormData.csv.bz2" %in% list.files())) {
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",
+              "FStormData.csv.bz2")
+}
+database = read.csv(bzfile("FStormData.csv.bz2"))
+database$BGN_DATE = as.Date(database$BGN_DATE, "%m/%d/%Y") 
+database$Year = year(database$BGN_DATE)
+head(database)
+
+```
+
+Variables used: 
+
+* __Year__: year the event is registered
+* __EVTYPE__: Type of event in question
+* __FATALITIES__: Direct Fatalities
+* __INJURIES__: Indirect fatalities
+* __PROPDMG__: Property Damage
+* __PROPDMGEXP__: The extent to which the damage thousands (K), millions (M) and billions (B) are found
+* __CROPDMG__: Crop Damage
+* __CROPDMGEXP__: The extent to which the damage thousands (K), millions (M) and billions (B) are found
+
+The differentiation between direct and indirect fatalities is not easy, the document that explains the database explains it as follows: _"The determination of direct versus indirect causes of weather-related
+fatalities or injuries is one of the most difficult aspects of Storm Data preparation. Determining
+whether a fatality or injury was direct or indirect has to be examined on a case-by-case basis. It
+is impossible to include all possible cases in this Directive. The preparer should include the
+word “indirect” in all references to indirect fatalities or injuries in the event narrative."_ 
+
+# Population Health
+
+To facilitate the visualization and given that in this analysis it is interesting to observe the events that generate greater damage, in the following graphs we only focus on the events that per year caused more than 15 direct or indirect fatalities, as the case may be.
+
+The following figure shows the fatalities that each event caused per year. The most intense red color represents the highest number, being the Heat in 1996 the cause of 687 fatalities. This way of observing the data is better than just presenting the sum of each event, since in this way we can observe cases that do not have effects year after year but in special cases they can present a very high risk in people's lives. On the other hand, it is observed that the event that is persistent causing a high number of fatalities are tornadoes.
+
+```{r, fig.align='center'}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise("Fatalities" = sum(FATALITIES))%>%
+  arrange(desc(Fatalities))%>%
+  filter(Fatalities>15)%>%
+  ggplot()+
+  labs(title = "Fatalities by year")+
+  geom_tile(aes(x = Year, y = EVTYPE, fill = Fatalities))+
+  scale_fill_gradient(low = "gray", high = "red4")+
+  theme_minimal()
+```
+
+In the case of indirect deaths, it must be taken into account that the number far exceeds the number of direct fatalities. While the year in which the most direct deaths were due to a tornado was 587, in 1974 tornadoes caused 6824 indirect fatalities, being this number the one that represents the most intense red color in this graph. In this case it becomes more noticeable that this event has a stronger effect year after year on people's lives.
+```{r, fig.height=10, fig.align='center'}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise("Injuries" = sum(INJURIES))%>%
+  arrange(desc(Injuries))%>%
+  filter(Injuries>15)%>%
+  ggplot()+
+  geom_tile(aes(x = Year, y = EVTYPE, fill = Injuries))+
+  scale_fill_gradient(low = "gray", high = "red4")+
+  labs(title = "Injuries by year")+
+  theme_minimal()
+```
+
+# Economic Consequences 
+
+In the case of the economic consequences of these events, it is necessary to normalize the figures so that they are comparable to each other. The next part of the code performs that multiplication so that the damage caused is in dollars.
+
+```{r}
+database$PROPDMG = with(database,ifelse(PROPDMGEXP=="K",PROPDMG*1000,ifelse(PROPDMGEXP=="M",PROPDMG*1000000,ifelse(PROPDMGEXP=="B",PROPDMG*1000000000,PROPDMG))))
+database$CROPDMG = with(database,ifelse(CROPDMGEXP=="K",CROPDMG*1000,ifelse(CROPDMGEXP=="M",CROPDMG*1000000,ifelse(PROPDMGEXP=="B",CROPDMG*1000000000,CROPDMG))))
+```
+
+As in the previous examples, to facilitate the visualization of the events that have a high impact per year, only the events that as a consequence damaged a quantity greater than 10,000,000 dollars are taken into account.
+
+As in the impact on health, in economic terms it can be categorized in two ways to generate harm. Those events that are persistent and year after year are noted, and those that are potentially fatal, as is the case of the floods, since this type of event generated property damage exceeding 116 billion dollars in 2006, representing this event the most intense red color on the graph.
+
+```{r, fig.align='center', fig.height=9.5}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise(Amount = sum(PROPDMG))%>%
+  arrange(desc(Amount))%>%
+  filter(Amount>10000000)%>%
+  ggplot()+
+  geom_tile(aes(x = Year, y = EVTYPE, fill = Amount))+
+  scale_fill_gradient(low = "gray", high = "red4")+
+  labs(title = "Property damage by year")+
+  theme_minimal()
+```
+
+In the case of the impact on the crops, the most harmful event happened in 1993, generating losses of 5 billion dollars due to the flooding of the river. It is notorious that the most intense colors for economic losses differ from those that are most dangerous to health, while in the first charts tornadoes persisted year after year, in these last two cases there is a higher impact on events such as floods, hurricanes and droughts.
+
+```{r, fig.align='center', fig.height=8}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise(Amount = sum(CROPDMG))%>%
+  arrange(desc(Amount))%>%
+  filter(Amount>10000000)%>%
+  ggplot()+
+  geom_tile(aes(x = Year, y = EVTYPE, fill = Amount))+
+  labs(title = "Crop Damage by year")+
+  scale_fill_gradient(low = "gray", high = "red4")+
+  theme_minimal()
+```
+
+
+# Tables
+
+The following tables are useful to show in detail the information that each of the graphs represents, they are ordered from highest to lowest by the impact of the damage caused in each item and allow to see the figure for each event in each year.
+
+```{r}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise("FATALITIES" = sum(FATALITIES))%>%
+  arrange(desc(FATALITIES))%>%
+  kable()%>%
+  kable_styling( full_width = F)%>%
+  scroll_box(width = "1000px", height = "200px")
+```
+
+
+
+
+```{r, fig.align='center'}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise("INJURIES" = sum(INJURIES))%>%
+  arrange(desc(INJURIES))%>%
+  kable() %>%
+  kable_styling( full_width = F)%>%
+  scroll_box(width = "1000px", height = "200px")
+
+```
+
+
+```{r, fig.align='center'}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise('Property Damage' = sum(PROPDMG))%>%
+  arrange(desc(`Property Damage`))%>%
+  kable() %>%
+  kable_styling( full_width = F)%>%
+  scroll_box(width = "1000px", height = "200px")
+
+```
+
+```{r, fig.align='center'}
+database %>% 
+  group_by(EVTYPE, Year) %>%
+  summarise('Crop Damage' = sum(CROPDMG))%>%
+  arrange(desc(`Crop Damage`))%>%
+  kable() %>%
+  kable_styling( full_width = F)%>%
+  scroll_box(width = "1000px", height = "200px")
+
+```
